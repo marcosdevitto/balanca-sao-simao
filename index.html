@@ -676,15 +676,28 @@ function interpretaFrame(frame){
   publicaPesoAoVivo(peso, ESTAVEIS.has(status));
 }
 
-/* PC leitor publica o peso ao vivo na nuvem (com throttle p/ não floodar) */
-let ultimaPublicacao=0;
+/* PC leitor publica o peso ao vivo na nuvem — SÓ quando muda de verdade */
+let ultimaPublicacao=0, ultimoPesoPublicado=null, ultimoEstavelPublicado=null;
 function publicaPesoAoVivo(peso, estavel){
   if(!nuvemPronta || !window.FB) return;
+
+  // ECONOMIA: se o peso e a estabilidade são iguais aos últimos publicados, não publica nada.
+  // Balança parada mandando o mesmo número não gera tráfego.
+  if(peso===ultimoPesoPublicado && estavel===ultimoEstavelPublicado) return;
+
+  // ECONOMIA: só publica se há alguém pesando (pesagem aberta ou painel aberto).
+  // Fora disso, o peso ao vivo não interessa a ninguém.
+  const painelAberto = document.getElementById('painel').classList.contains('abre');
+  const temComandaAberta = DB.comandas && DB.comandas.length>0;
+  if(!painelAberto && !temComandaAberta) return;
+
   const agora=Date.now();
-  // publica no máximo ~3x por segundo, mas sempre publica mudança de estabilidade
-  if(agora-ultimaPublicacao < 300 && estavel===window._ultEstavel) return;
+  // trava de vazão: no máximo ~3x/s, mas mudança de estabilidade passa na hora
+  if(agora-ultimaPublicacao < 300 && estavel===ultimoEstavelPublicado) return;
+
   ultimaPublicacao=agora;
-  window._ultEstavel=estavel;
+  ultimoPesoPublicado=peso;
+  ultimoEstavelPublicado=estavel;
   window.FB.set(window.FB.ref(window.FB.db,'balanca/pesoAoVivo'),
     { peso, estavel, em: agora }).catch(()=>{});
 }
