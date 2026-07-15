@@ -486,6 +486,7 @@ function iniciaNuvem(){
       // peso vindo da nuvem alimenta o mesmo estado usado na captura
       estadoSim = { peso:p.peso, estavel:!!p.estavel, status:p.estavel?'E':'@' };
       ultimoFrameEm = Date.now();
+      window._ultEmPeso = p.em;
       marcaBalancaRemota(p.em);
       atualizaVisores();
     });
@@ -502,10 +503,22 @@ function marcaBalancaRemota(em){
   const btn=document.getElementById('btConexao');
   const idade = Date.now() - (em||0);
   const fresco = idade < 8000; // menos de 8s = balança ativa lá no PC
-  if(b) b.className='bola-cx'+(fresco?' on':'');
-  if(t) t.textContent = fresco?'Peso ao vivo (balança no PC)':'Balança do PC parece offline';
-  // no celular, o botão de conectar não faz sentido — vira informativo
-  if(btn && !porta){ btn.style.display='none'; }
+
+  // Se ESTE aparelho é o leitor (porta aberta), quem manda é setConexao, não mexemos aqui.
+  if(porta) return;
+
+  if(fresco){
+    // está chegando peso ao vivo de outro PC → este aparelho é espectador/operador remoto
+    if(b) b.className='bola-cx on';
+    if(t) t.textContent='Peso ao vivo (balança no PC)';
+    if(btn) btn.style.display='none'; // aqui não precisa conectar, o peso já vem
+  }else{
+    // parou de chegar peso → este aparelho pode assumir como leitor
+    if(b) b.className='bola-cx';
+    // se nunca chegou peso nenhum, é "desconectada"; se já chegou e envelheceu, é "offline"
+    if(t) t.textContent = em ? 'Balança do PC parece offline' : 'Balança desconectada';
+    if(btn) btn.style.display=''; // mostra o botão de volta para poder conectar
+  }
 }
 
 /* Firebase remove arrays vazios — normaliza de volta */
@@ -1205,9 +1218,12 @@ body{font-family:'Segoe UI',system-ui,sans-serif;color:var(--tinta);background:#
 
 renderComandas();
 
-// reavalia a cada 3s se o peso ao vivo ainda está fresco (só importa em aparelho remoto)
+// Vigia a cada 3s: mantém o status da balança honesto e o botão de conectar disponível.
 setInterval(()=>{
-  if(!porta && document.getElementById('painel').classList.contains('abre')){
+  if(porta) return; // se este aparelho é o leitor, não mexe (setConexao cuida)
+  // reavalia se o peso ao vivo ainda está fresco
+  marcaBalancaRemota(window._ultEmPeso || 0);
+  if(document.getElementById('painel').classList.contains('abre')){
     atualizaBotoesCaptura();
     const rot=document.getElementById('vRot');
     if(rot) rot.textContent=vRotTexto();
