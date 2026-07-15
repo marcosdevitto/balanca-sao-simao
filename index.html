@@ -424,7 +424,7 @@ function salvaNuvem(){
   salvando=true;
   ignoraProximo=true;
   const limpo = JSON.parse(JSON.stringify(DB)); // remove undefined
-  window.FB.set(window.FB.ref(window.FB.db, 'balanca'), limpo)
+  window.FB.set(window.FB.ref(window.FB.db, 'balanca/dados'), limpo)
     .then(()=>{ salvando=false; marcaSync(true); })
     .catch(e=>{ salvando=false; marcaSync(false, e.message); });
 }
@@ -449,7 +449,7 @@ function iniciaNuvem(){
     return; 
   }
   nuvemIniciada=true;
-  const caminho = window.FB.ref(window.FB.db, 'balanca');
+  const caminho = window.FB.ref(window.FB.db, 'balanca/dados');
 
   window.FB.get(caminho).then(snap=>{
     if(snap.exists()){
@@ -462,21 +462,50 @@ function iniciaNuvem(){
     marcaSync(true);
     redesenhaTudo();
 
-    // escuta mudanças vindas de outros aparelhos
+    // escuta mudanças dos DADOS vindas de outros aparelhos
     window.FB.onValue(caminho, snap2=>{
       if(ignoraProximo){ ignoraProximo=false; return; }
       if(!snap2.exists()) return;
-      DB = normaliza(snap2.val());
+      const dados = snap2.val();
+      DB = normaliza(dados);
       redesenhaTudo();
       const t=document.getElementById('txtNuvem');
       if(t) t.textContent='Atualizado de outro aparelho';
       clearTimeout(window._syncTimer);
       window._syncTimer=setTimeout(()=>{ if(t) t.textContent='Sincronizado'; },2200);
     });
+
+    // escuta o PESO AO VIVO — para aparelhos que não têm a balança (celular)
+    const caminhoPeso = window.FB.ref(window.FB.db,'balanca/pesoAoVivo');
+    window.FB.onValue(caminhoPeso, snapP=>{
+      if(!snapP.exists()) return;
+      // se ESTE aparelho é o leitor (tem porta serial aberta), ignora — ele é a fonte
+      if(porta) return;
+      const p = snapP.val();
+      if(!p || typeof p.peso!=='number') return;
+      // peso vindo da nuvem alimenta o mesmo estado usado na captura
+      estadoSim = { peso:p.peso, estavel:!!p.estavel, status:p.estavel?'E':'@' };
+      ultimoFrameEm = Date.now();
+      marcaBalancaRemota(p.em);
+      atualizaVisores();
+    });
   }).catch(e=>{
     const t=document.getElementById('txtNuvem');
     if(t) t.textContent='Sem conexão com a nuvem';
   });
+}
+
+/* Indica no aparelho remoto que o peso vem da nuvem, e se está fresco */
+function marcaBalancaRemota(em){
+  const b=document.getElementById('bolaConexao');
+  const t=document.getElementById('txtConexao');
+  const btn=document.getElementById('btConexao');
+  const idade = Date.now() - (em||0);
+  const fresco = idade < 8000; // menos de 8s = balança ativa lá no PC
+  if(b) b.className='bola-cx'+(fresco?' on':'');
+  if(t) t.textContent = fresco?'Peso ao vivo (balança no PC)':'Balança do PC parece offline';
+  // no celular, o botão de conectar não faz sentido — vira informativo
+  if(btn && !porta){ btn.style.display='none'; }
 }
 
 /* Firebase remove arrays vazios — normaliza de volta */
@@ -644,6 +673,20 @@ function interpretaFrame(frame){
   estadoSim={ peso, estavel:ESTAVEIS.has(status), status };
   ultimoFrameEm=Date.now();
   atualizaVisores();
+  publicaPesoAoVivo(peso, ESTAVEIS.has(status));
+}
+
+/* PC leitor publica o peso ao vivo na nuvem (com throttle p/ não floodar) */
+let ultimaPublicacao=0;
+function publicaPesoAoVivo(peso, estavel){
+  if(!nuvemPronta || !window.FB) return;
+  const agora=Date.now();
+  // publica no máximo ~3x por segundo, mas sempre publica mudança de estabilidade
+  if(agora-ultimaPublicacao < 300 && estavel===window._ultEstavel) return;
+  ultimaPublicacao=agora;
+  window._ultEstavel=estavel;
+  window.FB.set(window.FB.ref(window.FB.db,'balanca/pesoAoVivo'),
+    { peso, estavel, em: agora }).catch(()=>{});
 }
 
 function atualizaVisores(){
@@ -672,10 +715,20 @@ function blocoSim(){return `
     <div class="num"><span id="vNum">${estadoSim.peso.toLocaleString('pt-BR')}</span><span class="u">kg</span></div>
     <div class="est"><span class="li-luz ${estadoSim.estavel?'on':''}" id="vLz">estável</span></div>
   </div>
-  <div class="aviso-sim" id="vRot">${porta?(estadoSim.estavel?'peso estável, pode capturar':'aguardando estabilizar…'):'Balança não conectada. Conecte no topo da tela.'}</div>`}
+  <div class="aviso-sim" id="vRot">${vRotTexto()}</div>`}
+function vRotTexto(){
+  const pesoFresco = (Date.now() - ultimoFrameEm) < 8000;
+  if(porta || pesoFresco){
+    return estadoSim.estavel?'peso estável, pode capturar':'aguardando estabilizar…';
+  }
+  return 'Aguardando peso da balança. Verifique se o PC leitor está ligado.';
+}
 
 function atualizaBotoesCaptura(){
-  const ok = !!porta && estadoSim.estavel;
+  // fonte válida: balança local (porta) OU peso ao vivo recente vindo da nuvem
+  const pesoFresco = (Date.now() - ultimoFrameEm) < 8000;
+  const temFonte = !!porta || pesoFresco;
+  const ok = temFonte && estadoSim.estavel;
   document.querySelectorAll('[data-captura]').forEach(bt=>{ bt.disabled=!ok; });
 }
 
@@ -1138,6 +1191,15 @@ body{font-family:'Segoe UI',system-ui,sans-serif;color:var(--tinta);background:#
 }
 
 renderComandas();
+
+// reavalia a cada 3s se o peso ao vivo ainda está fresco (só importa em aparelho remoto)
+setInterval(()=>{
+  if(!porta && document.getElementById('painel').classList.contains('abre')){
+    atualizaBotoesCaptura();
+    const rot=document.getElementById('vRot');
+    if(rot) rot.textContent=vRotTexto();
+  }
+}, 3000);
 </script>
 </body>
 </html>
