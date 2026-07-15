@@ -689,24 +689,28 @@ function interpretaFrame(frame){
   publicaPesoAoVivo(peso, ESTAVEIS.has(status));
 }
 
-/* PC leitor publica o peso ao vivo na nuvem — SÓ quando muda de verdade */
+/* PC leitor publica o peso ao vivo na nuvem — só quando muda, com pulso de vida */
 let ultimaPublicacao=0, ultimoPesoPublicado=null, ultimoEstavelPublicado=null;
+const PULSO_MS = 3000; // republica o peso parado a cada 3s p/ o celular saber que a balança segue viva
 function publicaPesoAoVivo(peso, estavel){
   if(!nuvemPronta || !window.FB) return;
 
-  // ECONOMIA: se o peso e a estabilidade são iguais aos últimos publicados, não publica nada.
-  // Balança parada mandando o mesmo número não gera tráfego.
-  if(peso===ultimoPesoPublicado && estavel===ultimoEstavelPublicado) return;
-
   // ECONOMIA: só publica se há alguém pesando (pesagem aberta ou painel aberto).
-  // Fora disso, o peso ao vivo não interessa a ninguém.
   const painelAberto = document.getElementById('painel').classList.contains('abre');
   const temComandaAberta = DB.comandas && DB.comandas.length>0;
   if(!painelAberto && !temComandaAberta) return;
 
   const agora=Date.now();
-  // trava de vazão: no máximo ~3x/s, mas mudança de estabilidade passa na hora
-  if(agora-ultimaPublicacao < 300 && estavel===ultimoEstavelPublicado) return;
+  const mudou = (peso!==ultimoPesoPublicado || estavel!==ultimoEstavelPublicado);
+  const tempoDesdeUltima = agora - ultimaPublicacao;
+
+  // Se NÃO mudou, só republica como "pulso de vida" a cada PULSO_MS.
+  // Isso mantém o celular confiante mesmo com o caminhão parado na balança.
+  if(!mudou && tempoDesdeUltima < PULSO_MS) return;
+
+  // Se mudou, respeita a trava de vazão (~3x/s) para não floodar durante o movimento,
+  // mas deixa passar na hora quando a estabilidade muda (parou ou começou a mexer).
+  if(mudou && tempoDesdeUltima < 300 && estavel===ultimoEstavelPublicado) return;
 
   ultimaPublicacao=agora;
   ultimoPesoPublicado=peso;
