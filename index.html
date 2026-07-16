@@ -164,6 +164,9 @@
   .bt-mov{background:var(--palha);color:var(--tinta);border:1px solid var(--linha);padding:9px 13px;border-radius:7px;font-family:inherit;font-weight:600;font-size:12.5px;cursor:pointer}
   .bt-est{background:var(--verde);color:#fff;border:none;padding:9px 13px;border-radius:7px;font-family:inherit;font-weight:600;font-size:12.5px;cursor:pointer}
   .aviso-sim{font-size:11px;color:var(--tinta-suave);margin-bottom:18px}
+  .bt-ler{width:100%;padding:11px;margin:10px 0 4px;font-family:inherit;font-size:14px;font-weight:600;border-radius:9px;border:1.5px solid var(--verde);background:var(--verde-claro);color:var(--verde);cursor:pointer}
+  .bt-ler:hover{background:#d6e8db}
+  .bt-ler:active{transform:scale(.98)}
 
   .bt-cap{width:100%;padding:12px;font-family:inherit;font-size:14px;font-weight:600;border-radius:9px;border:none;background:var(--terra);color:#fff;cursor:pointer;margin-top:3px}
   .bt-cap:disabled{background:var(--linha);color:var(--tinta-suave);cursor:not-allowed}
@@ -490,10 +493,55 @@ function iniciaNuvem(){
       marcaBalancaRemota(p.em);
       atualizaVisores();
     });
+
+    // VIGIA DE PEDIDOS — o PC leitor escuta pedidos de leitura e responde na hora
+    const caminhoPedido = window.FB.ref(window.FB.db,'balanca/pedidoLeitura');
+    window.FB.onValue(caminhoPedido, snapReq=>{
+      if(!snapReq.exists()) return;
+      if(!porta) return; // só quem tem a balança responde
+      const req = snapReq.val();
+      if(!req || !req.em) return;
+      if(req.em === window._ultPedidoRespondido) return; // já respondi este
+      window._ultPedidoRespondido = req.em;
+      // publica o peso ATUAL da balança na hora, forçando, sem esperar mudança
+      if(estadoSim && typeof estadoSim.peso==='number'){
+        ultimaPublicacao = Date.now();
+        ultimoPesoPublicado = estadoSim.peso;
+        ultimoEstavelPublicado = estadoSim.estavel;
+        window.FB.set(window.FB.ref(window.FB.db,'balanca/pesoAoVivo'),
+          { peso:estadoSim.peso, estavel:estadoSim.estavel, em:Date.now(), respostaDe:req.em }).catch(()=>{});
+      }
+    });
   }).catch(e=>{
     const t=document.getElementById('txtNuvem');
     if(t) t.textContent='Sem conexão com a nuvem';
   });
+}
+
+/* Botão "ler balança agora" — escreve um pedido; o PC leitor responde com o peso fresco */
+function pedeLeitura(){
+  const rot=document.getElementById('vRot');
+  // se ESTE aparelho é o próprio leitor, o peso já está aqui — só atualiza
+  if(porta){
+    atualizaVisores();
+    if(rot) rot.textContent = estadoSim.estavel?'peso estável, pode capturar':'aguardando estabilizar…';
+    return;
+  }
+  if(!nuvemPronta || !window.FB){
+    if(rot) rot.textContent='Sem conexão com a nuvem.';
+    return;
+  }
+  if(rot) rot.textContent='Pedindo peso à balança…';
+  const em=Date.now();
+  window.FB.set(window.FB.ref(window.FB.db,'balanca/pedidoLeitura'), { em }).catch(()=>{
+    if(rot) rot.textContent='Não consegui pedir. Tente de novo.';
+  });
+  // se em 6s não vier resposta, avisa
+  clearTimeout(window._timerPedido);
+  window._timerPedido=setTimeout(()=>{
+    const idade=Date.now()-(window._ultEmPeso||0);
+    if(idade>5000 && rot) rot.textContent='Balança não respondeu. Veja se o PC leitor está ligado.';
+  },6000);
 }
 
 /* Indica no aparelho remoto que o peso vem da nuvem, e se está fresco */
@@ -745,6 +793,7 @@ function blocoSim(){return `
     <div class="num"><span id="vNum">${estadoSim.peso.toLocaleString('pt-BR')}</span><span class="u">kg</span></div>
     <div class="est"><span class="li-luz ${estadoSim.estavel?'on':''}" id="vLz">estável</span></div>
   </div>
+  <button class="bt-ler" onclick="pedeLeitura()">⚖️ Ler balança agora</button>
   <div class="aviso-sim" id="vRot">${vRotTexto()}</div>`}
 function vRotTexto(){
   const pesoFresco = (Date.now() - ultimoFrameEm) < 8000;
