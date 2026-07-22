@@ -167,6 +167,10 @@
   .bt-ler{width:100%;padding:11px;margin:10px 0 4px;font-family:inherit;font-size:14px;font-weight:600;border-radius:9px;border:1.5px solid var(--verde);background:var(--verde-claro);color:var(--verde);cursor:pointer}
   .bt-ler:hover{background:#d6e8db}
   .bt-ler:active{transform:scale(.98)}
+  .acoes-cmd{display:flex;gap:6px;margin-top:8px;justify-content:flex-end}
+  .bt-mini-cmd{background:#fff;border:1px solid var(--linha);color:var(--tinta-suave);border-radius:6px;padding:4px 9px;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer}
+  .bt-mini-cmd:hover{background:var(--papel);color:var(--tinta)}
+  .bt-mini-cmd.rm:hover{background:#f7e6e0;color:var(--alerta);border-color:var(--alerta)}
 
   .bt-cap{width:100%;padding:12px;font-family:inherit;font-size:14px;font-weight:600;border-radius:9px;border:none;background:var(--terra);color:#fff;cursor:pointer;margin-top:3px}
   .bt-cap:disabled{background:var(--linha);color:var(--tinta-suave);cursor:not-allowed}
@@ -288,6 +292,51 @@
       <div class="tit" id="pTit">Nova pesagem<small id="pSub"></small></div>
     </div>
     <div class="p-corpo" id="pCorpo"></div>
+  </div>
+
+  <!-- Modal editar pesagem em aberto -->
+  <div class="fmodal" id="modalEditar">
+    <div class="cmodal">
+      <h3 style="text-align:center;margin-bottom:6px">Editar pesagem em aberto</h3>
+      <p style="text-align:center;font-size:12.5px;margin-bottom:16px">
+        1ª pesagem: <strong id="edPeso"></strong><br>
+        <span style="font-size:11.5px">o peso da balança não pode ser alterado</span>
+      </p>
+      <label class="campo"><span class="txt">Natureza</span>
+        <select id="edDir" onchange="ajustaSiloEdit()">
+          <option value="entrada">Entrando</option>
+          <option value="saida">Saindo</option>
+          <option value="servico">Serviço · terceiro</option>
+        </select></label>
+      <label class="campo"><span class="txt">Cliente</span>
+        <select id="edCli" onchange="carVeicEdit()"></select></label>
+      <label class="campo"><span class="txt">Caminhão</span>
+        <select id="edVeic"></select></label>
+      <label class="campo"><span class="txt">Motorista</span>
+        <input type="text" id="edMot" placeholder="Quem está dirigindo"></label>
+      <label class="campo"><span class="txt">Produto</span>
+        <input type="text" id="edProd" style="text-transform:uppercase" placeholder="Ex: Soja"></label>
+      <label class="campo" id="edWrapSilo"><span class="txt">Silo</span>
+        <select id="edSilo"></select></label>
+      <div class="mbotoes">
+        <button class="bt-nao" onclick="fecha('modalEditar')">Cancelar</button>
+        <button class="bt-sim" onclick="salvaEdicaoComanda()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal excluir pesagem em aberto -->
+  <div class="fmodal" id="modalExcluir">
+    <div class="cmodal centro">
+      <div class="ic">⚠️</div>
+      <h3>Excluir pesagem em aberto?</h3>
+      <p id="exResumo"></p>
+      <p style="font-size:12.5px">Use quando o veículo não voltar para a 2ª pesagem. Esta ação não pode ser desfeita.</p>
+      <div class="mbotoes">
+        <button class="bt-nao" onclick="fecha('modalExcluir')">Cancelar</button>
+        <button class="bt-sim" style="background:var(--alerta)" onclick="excluiComanda()">Sim, excluir</button>
+      </div>
+    </div>
   </div>
 
   <!-- Modal ticket -->
@@ -655,8 +704,93 @@ function renderComandas(){
         <div class="det">${cm.placa}${cm.produto?' · '+cm.produto:''} · ${cm.motorista||'sem motorista'}</div>
         <span class="tag ${cm.direcao==='saida'?'saida-tag':(cm.direcao==='servico'?'servico-tag':'entrada-tag')}">${cm.direcao==='saida'?'saindo':(cm.direcao==='servico'?'serviço':'entrando')} · aguardando 2ª</span>
       </div>
-      <div class="lado"><div class="rot">1ª pesagem</div><div class="p1">${fmt(cm.peso1)} kg</div></div>
+      <div class="lado">
+        <div class="rot">1ª pesagem</div>
+        <div class="p1">${fmt(cm.peso1)} kg</div>
+        <div class="acoes-cmd">
+          <button class="bt-mini-cmd" onclick="event.stopPropagation();editaComanda(${cm.id})" title="Editar dados">✎ editar</button>
+          <button class="bt-mini-cmd rm" onclick="event.stopPropagation();confirmaExcluir(${cm.id})" title="Excluir pesagem">✕ excluir</button>
+        </div>
+      </div>
     </div>`).join('');
+}
+
+/* ===== EDITAR / EXCLUIR PESAGEM EM ABERTO ===== */
+let comandaEditando=null, comandaExcluindo=null;
+
+function editaComanda(id){
+  const cm=DB.comandas.find(c=>c.id===id);
+  if(!cm) return;
+  comandaEditando=id;
+  document.getElementById('edPeso').textContent=fmt(cm.peso1)+' kg';
+  document.getElementById('edCli').innerHTML=opcCli();
+  document.getElementById('edCli').value=(DB.clientes.find(c=>c.nome===cm.cliente)||{}).id||'';
+  carVeicEdit();
+  // seleciona o veículo pela placa
+  const cSel=DB.clientes.find(c=>c.nome===cm.cliente);
+  if(cSel){
+    const idx=cSel.veiculos.findIndex(v=>v.placa===cm.placa);
+    if(idx>=0) document.getElementById('edVeic').value=idx;
+  }
+  document.getElementById('edMot').value=cm.motorista||'';
+  document.getElementById('edProd').value=cm.produto||'';
+  document.getElementById('edSilo').innerHTML=opcSilo();
+  document.getElementById('edSilo').value=cm.siloId||'';
+  // natureza
+  document.getElementById('edDir').value=cm.direcao||'entrada';
+  ajustaSiloEdit();
+  document.getElementById('modalEditar').classList.add('abre');
+}
+
+function carVeicEdit(){
+  const id=parseInt(document.getElementById('edCli').value);
+  const c=DB.clientes.find(c=>c.id===id);
+  const sel=document.getElementById('edVeic');
+  sel.innerHTML=c?('<option value="">Selecione…</option>'+c.veiculos.map((v,i)=>`<option value="${i}">${v.placa} · ${v.modelo}</option>`).join('')):'<option value="">Selecione o cliente…</option>';
+}
+
+function ajustaSiloEdit(){
+  const dir=document.getElementById('edDir').value;
+  const wrap=document.getElementById('edWrapSilo');
+  if(dir==='servico'){ wrap.style.display='none'; document.getElementById('edSilo').value=''; }
+  else wrap.style.display='block';
+}
+
+function salvaEdicaoComanda(){
+  const cm=DB.comandas.find(c=>c.id===comandaEditando);
+  if(!cm){ fecha('modalEditar'); return; }
+  const cliId=parseInt(document.getElementById('edCli').value);
+  const c=DB.clientes.find(c=>c.id===cliId);
+  const vi=document.getElementById('edVeic').value;
+  if(c){
+    cm.cliente=c.nome;
+    if(vi!=='' && c.veiculos[vi]) cm.placa=c.veiculos[vi].placa;
+  }
+  cm.motorista=document.getElementById('edMot').value.trim();
+  cm.produto=document.getElementById('edProd').value.trim().toUpperCase();
+  cm.direcao=document.getElementById('edDir').value;
+  const silo=document.getElementById('edSilo').value;
+  cm.siloId = (cm.direcao==='servico'||!silo) ? null : parseInt(silo);
+  salvaNuvem();
+  fecha('modalEditar');
+  renderComandas();
+}
+
+function confirmaExcluir(id){
+  const cm=DB.comandas.find(c=>c.id===id);
+  if(!cm) return;
+  comandaExcluindo=id;
+  document.getElementById('exResumo').innerHTML=
+    `<span class="destaque">${cm.cliente}</span> · ${cm.placa}<br>1ª pesagem: ${fmt(cm.peso1)} kg`;
+  document.getElementById('modalExcluir').classList.add('abre');
+}
+
+function excluiComanda(){
+  DB.comandas=DB.comandas.filter(c=>c.id!==comandaExcluindo);
+  salvaNuvem();
+  fecha('modalExcluir');
+  renderComandas();
+  comandaExcluindo=null;
 }
 
 function opcCli(){return '<option value="">Selecione…</option>'+DB.clientes.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('')}
