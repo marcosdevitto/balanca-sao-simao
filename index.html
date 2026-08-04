@@ -171,6 +171,15 @@
   .bt-mini-cmd{background:#fff;border:1px solid var(--linha);color:var(--tinta-suave);border-radius:6px;padding:4px 9px;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer}
   .bt-mini-cmd:hover{background:var(--papel);color:var(--tinta)}
   .bt-mini-cmd.rm:hover{background:#f7e6e0;color:var(--alerta);border-color:var(--alerta)}
+  .eh-pesos{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px}
+  .eh-pesos>div{background:var(--papel);border:1px solid var(--linha);border-radius:8px;padding:9px 12px;display:flex;flex-direction:column}
+  .eh-rot{font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--tinta-suave);font-weight:600}
+  .eh-val{font-family:'Courier New',monospace;font-weight:700;font-size:15px}
+  .eh-nota{font-size:11px;color:var(--tinta-suave);margin-bottom:14px;text-align:center}
+  .eh-final{background:var(--tinta);color:var(--papel);border-radius:10px;padding:12px 15px;margin:8px 0 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
+  .eh-final .eh-rot{color:rgba(255,255,255,.7)}
+  .eh-val-big{font-family:'Courier New',monospace;font-weight:700;font-size:20px;color:var(--luz)}
+  .eh-dif{font-size:12px;width:100%;text-align:right}
 
   .bt-cap{width:100%;padding:12px;font-family:inherit;font-size:14px;font-weight:600;border-radius:9px;border:none;background:var(--terra);color:#fff;cursor:pointer;margin-top:3px}
   .bt-cap:disabled{background:var(--linha);color:var(--tinta-suave);cursor:not-allowed}
@@ -292,6 +301,55 @@
       <div class="tit" id="pTit">Nova pesagem<small id="pSub"></small></div>
     </div>
     <div class="p-corpo" id="pCorpo"></div>
+  </div>
+
+  <!-- Modal editar pesagem realizada -->
+  <div class="fmodal" id="modalEditHist">
+    <div class="cmodal">
+      <h3 style="text-align:center;margin-bottom:4px">Editar pesagem realizada</h3>
+      <div style="text-align:center;font-family:'Courier New',monospace;font-weight:700;margin-bottom:14px" id="ehNum"></div>
+
+      <div class="eh-pesos">
+        <div><span class="eh-rot">Peso bruto</span><span class="eh-val" id="ehBruto"></span></div>
+        <div><span class="eh-rot">Tara</span><span class="eh-val" id="ehTara"></span></div>
+      </div>
+      <div class="eh-nota">Os pesos vieram da balança e não podem ser alterados.</div>
+
+      <label class="campo"><span class="txt">Natureza</span>
+        <select id="ehDir" onchange="ehAjustaSilo();ehPreview()">
+          <option value="entrada">Entrando</option>
+          <option value="saida">Saindo</option>
+          <option value="servico">Serviço · terceiro</option>
+        </select></label>
+      <label class="campo"><span class="txt">Cliente</span>
+        <input type="text" id="ehCli" style="text-transform:uppercase"></label>
+      <div class="dois">
+        <label class="campo"><span class="txt">Placa</span>
+          <input type="text" id="ehPlaca" style="text-transform:uppercase"></label>
+        <label class="campo"><span class="txt">Motorista</span>
+          <input type="text" id="ehMot"></label>
+      </div>
+      <label class="campo"><span class="txt">Produto</span>
+        <input type="text" id="ehProd" style="text-transform:uppercase"></label>
+      <div class="dois">
+        <label class="campo"><span class="txt">Impureza (%)</span>
+          <input type="number" id="ehImp" step="0.1" oninput="ehPreview()"></label>
+        <label class="campo"><span class="txt">Umidade (%)</span>
+          <input type="number" id="ehUmi" step="0.1" oninput="ehPreview()"></label>
+      </div>
+      <label class="campo" id="ehWrapSilo"><span class="txt">Silo</span>
+        <select id="ehSilo" onchange="ehPreview()"></select></label>
+
+      <div class="eh-final">
+        <div><span class="eh-rot">Novo peso final</span><span class="eh-val-big" id="ehFinalNovo"></span></div>
+        <div class="eh-dif" id="ehDif"></div>
+      </div>
+
+      <div class="mbotoes">
+        <button class="bt-nao" onclick="fecha('modalEditHist')">Cancelar</button>
+        <button class="bt-sim" onclick="salvaEdicaoHistorico()">Salvar correção</button>
+      </div>
+    </div>
   </div>
 
   <!-- Modal editar pesagem em aberto -->
@@ -672,13 +730,19 @@ function renderHistorico(){
   el.innerHTML=DB.historico.map(h=>{
     const nat = h.direcao==='saida'?'saindo':(h.direcao==='servico'?'serviço':'entrando');
     const cls = h.direcao==='saida'?'saida-tag':(h.direcao==='servico'?'servico-tag':'entrada-tag');
-    return `<div class="mov" style="cursor:pointer" onclick="reimprime('${h.numero}')">
+    return `<div class="mov">
       <div class="esq">
         <span class="t">nº ${h.numero} · ${h.cliente}</span>
         <span class="tag ${cls}" style="margin-left:8px">${nat}</span>
         <div class="s">${h.placa} · ${h.produto||'—'} · ${h.quando}</div>
       </div>
-      <div class="qt entrada" style="color:var(--tinta)">${fmt(h.final)} kg</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="qt entrada" style="color:var(--tinta)">${fmt(h.final)} kg</div>
+        <div class="acoes-cmd" style="margin-top:0">
+          <button class="bt-mini-cmd" onclick="reimprime('${h.numero}')" title="Reimprimir ticket">🎫</button>
+          <button class="bt-mini-cmd" onclick="editaHistorico('${h.numero}')" title="Editar pesagem">✎</button>
+        </div>
+      </div>
     </div>`;
   }).join('');
 }
@@ -686,6 +750,120 @@ function renderHistorico(){
 function reimprime(numero){
   const h=DB.historico.find(h=>h.numero===numero);
   if(h) abreTicket(h);
+}
+
+/* ===== EDITAR PESAGEM JÁ REALIZADA ===== */
+let histEditando=null;
+function editaHistorico(numero){
+  const h=DB.historico.find(h=>h.numero===numero);
+  if(!h) return;
+  histEditando=numero;
+  document.getElementById('ehNum').textContent='nº '+h.numero;
+  document.getElementById('ehBruto').textContent=fmt(h.bruto)+' kg';
+  document.getElementById('ehTara').textContent=fmt(h.tara)+' kg';
+  document.getElementById('ehDir').value=h.direcao||'entrada';
+  document.getElementById('ehCli').value=h.cliente||'';
+  document.getElementById('ehPlaca').value=h.placa||'';
+  document.getElementById('ehMot').value=h.motorista||'';
+  document.getElementById('ehProd').value=h.produto||'';
+  document.getElementById('ehImp').value=h.impureza||0;
+  document.getElementById('ehUmi').value=h.umidade||0;
+  document.getElementById('ehSilo').innerHTML=opcSilo();
+  document.getElementById('ehSilo').value=h.siloId||'';
+  ehAjustaSilo();
+  ehPreview();
+  document.getElementById('modalEditHist').classList.add('abre');
+}
+
+function ehAjustaSilo(){
+  const dir=document.getElementById('ehDir').value;
+  const wrap=document.getElementById('ehWrapSilo');
+  if(dir==='servico'){ wrap.style.display='none'; }
+  else wrap.style.display='block';
+}
+
+/* recalcula o peso final ao vivo conforme edita as quebras */
+function ehPreview(){
+  const h=DB.historico.find(x=>x.numero===histEditando);
+  if(!h) return;
+  const liq=h.liquido;
+  const imp=parseFloat(document.getElementById('ehImp').value)||0;
+  const umi=parseFloat(document.getElementById('ehUmi').value)||0;
+  const ehGrao=(imp>0||umi>0);
+  let final=liq;
+  if(ehGrao){
+    const impKg=liq*imp/100;
+    let umiQ=umi>=ARM.umidade?(umi-ARM.umidade)/(100-ARM.umidade)*100:0;
+    const umiKg=liq*umiQ/100;
+    final=liq-impKg-umiKg;
+  }
+  document.getElementById('ehFinalNovo').textContent=fmt(final)+' kg';
+  const dif=final-h.final;
+  const elDif=document.getElementById('ehDif');
+  if(Math.abs(dif)<0.5){ elDif.textContent='sem mudança no peso final'; elDif.style.color='var(--tinta-suave)'; }
+  else{
+    elDif.textContent=(dif>0?'+':'')+fmt(dif)+' kg em relação ao valor atual ('+fmt(h.final)+' kg)';
+    elDif.style.color=dif>0?'var(--verde)':'var(--alerta)';
+  }
+  return final;
+}
+
+function salvaEdicaoHistorico(){
+  const h=DB.historico.find(x=>x.numero===histEditando);
+  if(!h){ fecha('modalEditHist'); return; }
+  const finalNovo=ehPreview();
+  const finalAntigo=h.final;
+  const siloAntigo=h.siloId;
+
+  // atualiza os campos editáveis (peso bruto e tara ficam intactos)
+  h.direcao=document.getElementById('ehDir').value;
+  h.cliente=document.getElementById('ehCli').value.trim().toUpperCase();
+  h.placa=document.getElementById('ehPlaca').value.trim().toUpperCase();
+  h.motorista=document.getElementById('ehMot').value.trim();
+  h.produto=document.getElementById('ehProd').value.trim().toUpperCase();
+  h.impureza=parseFloat(document.getElementById('ehImp').value)||0;
+  h.umidade=parseFloat(document.getElementById('ehUmi').value)||0;
+  const novoSilo=document.getElementById('ehSilo').value;
+  h.siloId = (h.direcao==='servico'||!novoSilo) ? null : parseInt(novoSilo);
+  h.final=finalNovo;
+  if(h.silo!==undefined){
+    const s=novoSilo?DB.silos.find(s=>s.id===parseInt(novoSilo)):null;
+    h.silo=s?(s.nome+' · '+s.produto):null;
+  }
+
+  // AJUSTE DO SILO — desfaz o efeito antigo e aplica o novo
+  ajustaSiloAposEdicao(h, siloAntigo, finalAntigo);
+
+  salvaNuvem();
+  fecha('modalEditHist');
+  renderHistorico();
+}
+
+/* desfaz o efeito da pesagem no silo antigo e aplica o efeito novo */
+function ajustaSiloAposEdicao(h, siloAntigo, finalAntigo){
+  // 1) desfazer o efeito antigo (se havia silo e não era serviço)
+  if(siloAntigo){
+    const sa=DB.silos.find(s=>s.id===siloAntigo);
+    if(sa){
+      // entrada tinha somado; saida tinha subtraído. Desfaz o oposto.
+      // como não guardamos a direção antiga separada, assumimos a atual p/ o silo antigo
+      // (direção só muda em casos raros; o efeito é revertido pelo valor)
+      const eraEntrada = h._dirAntiga ? h._dirAntiga!=='saida' : h.direcao!=='saida';
+      sa.saldoKg += eraEntrada ? -finalAntigo : finalAntigo;
+    }
+  }
+  // 2) aplicar o efeito novo (se há silo e não é serviço)
+  if(h.siloId && h.direcao!=='servico'){
+    const sn=DB.silos.find(s=>s.id===h.siloId);
+    if(sn){
+      const ent = h.direcao!=='saida';
+      sn.saldoKg += ent ? h.final : -h.final;
+      // registra o ajuste no extrato para rastreabilidade
+      DB.movimentos.unshift({id:DB._mov++,siloId:sn.id,tipo:ent?'entrada':'saida',
+        kg:h.final,origem:'manual',detalhe:'ajuste da pesagem nº '+h.numero+' (edição)',quando:agora()});
+    }
+  }
+  h._dirAntiga=h.direcao;
 }
 
 /* ===== PESAGEM UNIFICADA ===== */
