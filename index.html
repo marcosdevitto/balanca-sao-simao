@@ -1144,8 +1144,12 @@ function novaPesagem(){
     <div class="dir-aviso" id="dirAviso">Marque a natureza antes de pesar. Entrando e saindo mexem no silo. Serviço só registra o peso.</div>
     <div id="restoNova" style="display:none">
       ${blocoSim()}
+      <div class="campo-2peso">
+        <label class="campo"><span class="txt">1ª pesagem (capture da balança ou digite manualmente)</span>
+          <input type="number" id="peso1" placeholder="0" step="10" oninput="digitou1()"></label>
+        <button class="btn-mini" data-captura disabled onclick="capturaNova()">usar balança</button>
+      </div>
       <div class="cap-ok" id="capOk" style="display:none"></div>
-      <button class="bt-cap" data-captura disabled onclick="capturaNova()">Capturar 1ª pesagem</button>
       <div class="divisor"></div>
       <div class="rotulo-secao">Identificação</div>
       <label class="campo"><span class="txt">Cliente</span><select id="fCli" onchange="carVeic();validaPrim()">${opcCli()}</select></label>
@@ -1180,10 +1184,19 @@ function carVeic(){
 }
 function capturaNova(){
   if(!estadoSim.estavel)return;
-  capAlvo=estadoSim.peso;
+  document.getElementById('peso1').value=estadoSim.peso;
+  digitou1();
+}
+function digitou1(){
+  const v=parseFloat(document.getElementById('peso1').value);
+  capAlvo=(!isNaN(v)&&v>0)?v:null;
   const el=document.getElementById('capOk');
-  el.style.display='flex';
-  el.innerHTML=`<div><div class="r">1ª pesagem capturada</div><div class="v">${fmt(capAlvo)} kg</div></div><div class="r">estável ✓</div>`;
+  if(capAlvo!==null){
+    el.style.display='flex';
+    el.innerHTML=`<div><div class="r">1ª pesagem</div><div class="v">${fmt(capAlvo)} kg</div></div>`;
+  }else{
+    el.style.display='none';
+  }
   validaPrim();
 }
 function validaPrim(){
