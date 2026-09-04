@@ -813,7 +813,14 @@ function salvaEdicaoHistorico(){
   if(!h){ fecha('modalEditHist'); return; }
   const finalNovo=ehPreview();
   const finalAntigo=h.final;
-  const siloAntigo=h.siloId;
+  // resolve o silo antigo: usa siloId se existir, senão deduz pelo texto (pesagens antigas sem siloId)
+  let siloAntigo=h.siloId||null;
+  if(!siloAntigo && h.silo){
+    const nomeAntigo=String(h.silo).split(' · ')[0].trim();
+    const achado=DB.silos.find(s=>s.nome===nomeAntigo);
+    if(achado) siloAntigo=achado.id;
+  }
+  const dirAntiga=h.direcao;
 
   // atualiza os campos editáveis (peso bruto e tara ficam intactos)
   h.direcao=document.getElementById('ehDir').value;
@@ -832,7 +839,7 @@ function salvaEdicaoHistorico(){
   }
 
   // AJUSTE DO SILO — desfaz o efeito antigo e aplica o novo
-  ajustaSiloAposEdicao(h, siloAntigo, finalAntigo);
+  ajustaSiloAposEdicao(h, siloAntigo, finalAntigo, dirAntiga);
 
   salvaNuvem();
   fecha('modalEditHist');
@@ -840,15 +847,13 @@ function salvaEdicaoHistorico(){
 }
 
 /* desfaz o efeito da pesagem no silo antigo e aplica o efeito novo */
-function ajustaSiloAposEdicao(h, siloAntigo, finalAntigo){
+function ajustaSiloAposEdicao(h, siloAntigo, finalAntigo, dirAntiga){
   // 1) desfazer o efeito antigo (se havia silo e não era serviço)
-  if(siloAntigo){
+  if(siloAntigo && dirAntiga!=='servico'){
     const sa=DB.silos.find(s=>s.id===siloAntigo);
     if(sa){
-      // entrada tinha somado; saida tinha subtraído. Desfaz o oposto.
-      // como não guardamos a direção antiga separada, assumimos a atual p/ o silo antigo
-      // (direção só muda em casos raros; o efeito é revertido pelo valor)
-      const eraEntrada = h._dirAntiga ? h._dirAntiga!=='saida' : h.direcao!=='saida';
+      const eraEntrada = dirAntiga!=='saida';
+      // desfaz: se tinha somado, subtrai; se tinha subtraído, soma de volta
       sa.saldoKg += eraEntrada ? -finalAntigo : finalAntigo;
     }
   }
@@ -863,7 +868,6 @@ function ajustaSiloAposEdicao(h, siloAntigo, finalAntigo){
         kg:h.final,origem:'manual',detalhe:'ajuste da pesagem nº '+h.numero+' (edição)',quando:agora()});
     }
   }
-  h._dirAntiga=h.direcao;
 }
 
 /* ===== PESAGEM UNIFICADA ===== */
@@ -1304,6 +1308,7 @@ function finaliza(lancar){
     motorista: resPend.motorista,
     produto: resPend.produto,
     silo: silo?(silo.nome+' · '+silo.produto):null,
+    siloId: resPend.siloId||null,
     bruto: resPend.bruto,
     tara: resPend.tara,
     liquido: resPend.liquido,
